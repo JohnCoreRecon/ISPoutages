@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: isp-outage-watch
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false          # you paste this in the Render dashboard (kept secret)
+      - key: MODEL
+        value: claude-sonnet-4-6
+      - key: CACHE_SECONDS
+        value: "90"
