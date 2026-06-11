@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>South Texas ISP Outage Watch</title>
+<style>
+:root{
+  --void:#0B0F14; --panel:#121A22; --panel-2:#0F151C; --edge:#1F2A35;
+  --ink:#E6EDF3; --mute:#7C8A98;
+  --up:#3FB950; --up-glow:rgba(63,185,80,.55);
+  --warn:#E3B341; --warn-glow:rgba(227,179,65,.55);
+  --down:#F85149; --down-glow:rgba(248,81,73,.55);
+  --unk:#5C6773; --accent:#38BDF8;
+}
+*{box-sizing:border-box}
+html,body{margin:0; min-height:100%}
+body{
+  background:radial-gradient(1200px 600px at 80% -10%, rgba(56,189,248,.06), transparent 60%), var(--void);
+  color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.grid-overlay{position:fixed; inset:0; pointer-events:none; opacity:.35; z-index:0;
+  background-image:linear-gradient(var(--edge) 1px,transparent 1px),linear-gradient(90deg,var(--edge) 1px,transparent 1px);
+  background-size:46px 46px; -webkit-mask-image:radial-gradient(circle at 50% 0%,#000,transparent 75%);
+  mask-image:radial-gradient(circle at 50% 0%,#000,transparent 75%)}
+.wrap{position:relative; z-index:1; max-width:1180px; margin:0 auto; padding:26px 20px 48px}
+
+.cmdbar{display:flex; justify-content:space-between; align-items:flex-start; gap:24px; flex-wrap:wrap}
+.eyebrow{font:600 11px/1 ui-monospace,Menlo,monospace; letter-spacing:.22em; color:var(--accent); margin-bottom:10px}
+h1{margin:0; font-size:clamp(22px,3.4vw,32px); font-weight:750; letter-spacing:-.01em}
+.sub{margin:6px 0 0; color:var(--mute); font-size:13.5px}
+.controls{display:flex; flex-direction:column; align-items:flex-end; gap:10px}
+.region{display:inline-flex; align-items:center; gap:9px; padding:7px 13px; border-radius:999px;
+  font:600 11.5px/1 ui-monospace,Menlo,monospace; letter-spacing:.13em; border:1px solid var(--edge); background:var(--panel)}
+.region .pulse{width:8px; height:8px; border-radius:50%; animation:pulse 1.8s ease-in-out infinite}
+.region.up{color:var(--up)} .region.up .pulse{background:var(--up); box-shadow:0 0 10px var(--up-glow)}
+.region.warn{color:var(--warn)} .region.warn .pulse{background:var(--warn); box-shadow:0 0 10px var(--warn-glow)}
+.region.down{color:var(--down)} .region.down .pulse{background:var(--down); box-shadow:0 0 10px var(--down-glow)}
+.region.unk{color:var(--mute)} .region.unk .pulse{background:var(--unk)}
+.ctl-row{display:flex; align-items:center; gap:10px}
+.btn{background:var(--accent); color:#04121b; border:none; padding:9px 18px; border-radius:8px;
+  font-weight:700; font-size:13px; cursor:pointer; transition:filter .15s, transform .05s}
+.btn:hover{filter:brightness(1.08)} .btn:active{transform:translateY(1px)} .btn:disabled{opacity:.55; cursor:wait}
+.auto{display:flex; align-items:center; gap:7px; font-size:12px; color:var(--mute)}
+.auto select{background:var(--panel); color:var(--ink); border:1px solid var(--edge); border-radius:7px; padding:7px 8px; font-size:12px}
+.synced{font:500 11.5px/1 ui-monospace,Menlo,monospace; color:var(--mute)}
+
+.sweep{height:2px; margin:18px 0 4px; border-radius:2px; background:var(--edge); overflow:hidden; position:relative}
+.sweep.on::after{content:""; position:absolute; inset:0; width:34%;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent); animation:sweep 1.1s linear infinite}
+
+.agg{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:16px 0 18px}
+.stat{background:var(--panel); border:1px solid var(--edge); border-radius:11px; padding:14px 16px; display:flex; flex-direction:column; gap:3px}
+.stat .n{font:750 26px/1 ui-monospace,Menlo,monospace} .stat .l{font-size:12px; color:var(--mute)}
+.stat.up{border-left:3px solid var(--up)} .stat.up .n{color:var(--up)}
+.stat.warn{border-left:3px solid var(--warn)} .stat.warn .n{color:var(--warn)}
+.stat.down{border-left:3px solid var(--down)} .stat.down .n{color:var(--down)}
+.stat.unk{border-left:3px solid var(--unk)} .stat.unk .n{color:var(--mute)}
+
+.banner{border-radius:10px; padding:11px 15px; font-size:12.5px; margin-bottom:16px}
+.banner.warn{background:rgba(227,179,65,.08); border:1px solid rgba(227,179,65,.35); color:#f0d28a}
+.banner.err{background:rgba(248,81,73,.08); border:1px solid rgba(248,81,73,.35); color:#ffb4af}
+
+.cards{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px}
+.card{background:linear-gradient(180deg,var(--panel),var(--panel-2)); border:1px solid var(--edge);
+  border-radius:13px; padding:16px 17px; transition:border-color .18s, transform .18s}
+.card:hover{border-color:#33424f; transform:translateY(-2px)}
+.card.outage{border-color:rgba(248,81,73,.4)} .card.possible{border-color:rgba(227,179,65,.32)}
+.card-top{display:flex; justify-content:space-between; align-items:center; gap:10px}
+.card-name{font-weight:700; font-size:16px}
+.tech{font:600 10px/1 ui-monospace,Menlo,monospace; letter-spacing:.1em; color:var(--mute);
+  border:1px solid var(--edge); border-radius:5px; padding:4px 7px}
+.status-row{display:flex; align-items:center; gap:9px; margin:14px 0 11px}
+.dot{width:11px; height:11px; border-radius:50%}
+.status-label{font:700 12.5px/1 ui-monospace,Menlo,monospace; letter-spacing:.13em}
+.meter{display:flex; gap:5px; margin-bottom:12px}
+.seg{flex:1; height:5px; border-radius:3px; background:#1a232d}
+.summary{margin:0; font-size:13px; line-height:1.5; color:#c4d0db; min-height:38px}
+.areas{display:flex; flex-wrap:wrap; gap:6px; margin-top:11px}
+.area{font:500 11px/1 ui-monospace,Menlo,monospace; color:var(--mute);
+  background:rgba(255,255,255,.03); border:1px solid var(--edge); border-radius:5px; padding:5px 8px}
+.links{display:flex; align-items:center; gap:12px; margin-top:14px; padding-top:13px; border-top:1px solid var(--edge)}
+.links a{color:var(--accent); text-decoration:none; font-size:12.5px; font-weight:600}
+.links a:hover{text-decoration:underline}
+.sep{width:1px; height:13px; background:var(--edge)}
+
+.reference{margin-top:26px}
+.ref-head{font:600 11px/1 ui-monospace,Menlo,monospace; letter-spacing:.2em; color:var(--mute); margin-bottom:11px}
+.ref-list{display:flex; flex-wrap:wrap; gap:9px}
+.ref-chip{display:inline-flex; align-items:center; gap:8px; text-decoration:none; color:var(--ink);
+  background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:8px 12px; font-size:13px}
+.ref-chip:hover{border-color:var(--accent)}
+.ref-tech{font:600 9.5px/1 ui-monospace,Menlo,monospace; letter-spacing:.08em; color:var(--mute)}
+
+.foot{margin-top:28px; padding-top:18px; border-top:1px solid var(--edge)}
+.foot p{margin:0; color:var(--mute); font-size:12px; line-height:1.6; max-width:760px}
+
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes sweep{0%{left:-34%}100%{left:100%}}
+@media (max-width:620px){.agg{grid-template-columns:repeat(2,1fr)} .controls{align-items:flex-start; width:100%}}
+@media (prefers-reduced-motion:reduce){*{animation:none !important; transition:none !important}}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="grid-overlay" aria-hidden="true"></div>
+<main class="wrap">
+  <header class="cmdbar">
+    <div class="ident">
+      <div class="eyebrow">CORERECON · COASTAL BEND NOC</div>
+      <h1>South Texas ISP Outage Watch</h1>
+      <p class="sub">Live provider status across the Corpus Christi metro</p>
+    </div>
+    <div class="controls">
+      <div id="region" class="region unk"><span class="pulse"></span><span id="region-label">AWAITING DATA</span></div>
+      <div class="ctl-row">
+        <button id="refresh" class="btn">Refresh</button>
+        <label class="auto"><span>Auto</span>
+          <select id="auto"><option value="0">Off</option><option value="2">2m</option><option value="5">5m</option><option value="10">10m</option></select>
+        </label>
+      </div>
+      <div id="synced" class="synced">Last sync: —</div>
+    </div>
+  </header>
+
+  <div id="sweep" class="sweep"></div>
+
+  <div class="agg">
+    <div class="stat up"><div class="n" id="c-up">0</div><div class="l">Operational</div></div>
+    <div class="stat warn"><div class="n" id="c-warn">0</div><div class="l">Possible issues</div></div>
+    <div class="stat down"><div class="n" id="c-down">0</div><div class="l">Outage</div></div>
+    <div class="stat unk"><div class="n" id="c-unk">0</div><div class="l">No data</div></div>
+  </div>
+
+  <div id="banner"></div>
+  <section id="cards" class="cards"></section>
+
+  <section class="reference">
+    <div class="ref-head">ALSO SERVING THE AREA</div>
+    <div class="ref-list" id="reference"></div>
+  </section>
+
+  <footer class="foot">
+    <p>Status is inferred from live web searches of Downdetector and public reports each refresh — a community-signal
+    view, not official provider telemetry. For an authoritative answer, open a provider's status page from its card.</p>
+  </footer>
+</main>
+
+<script>
+const ROSTER = [
+  { id:"spectrum",   name:"Spectrum",         tech:"CABLE",     status:"https://www.spectrum.net/support/internet/spectrum-internet-outages", dd:"https://downdetector.com/status/spectrum/" },
+  { id:"att",        name:"AT&T",             tech:"FIBER/DSL", status:"https://www.att.com/outages/",                                         dd:"https://downdetector.com/status/att/" },
+  { id:"grande",     name:"Astound / Grande", tech:"CABLE",     status:"https://www.astound.com/support/",                                     dd:"https://downdetector.com/status/grande-communications/" },
+  { id:"frontier",   name:"Frontier",         tech:"FIBER",     status:"https://frontier.com/helpcenter/categories/service-issues",            dd:"https://downdetector.com/status/frontier/" },
+  { id:"brightspeed",name:"Brightspeed",      tech:"DSL/FIBER", status:"https://www.brightspeed.com/helpsupport/",                             dd:"https://downdetector.com/status/brightspeed/" },
+  { id:"tmobile",    name:"T-Mobile Home",    tech:"5G",        status:"https://www.t-mobile.com/support/coverage/t-mobile-network-status",    dd:"https://downdetector.com/status/t-mobile/" },
+  { id:"verizon",    name:"Verizon",          tech:"5G/CELL",   status:"https://www.verizon.com/about/account-security/check-network-status",  dd:"https://downdetector.com/status/verizon/" },
+  { id:"starlink",   name:"Starlink",         tech:"SATELLITE", status:"https://www.starlink.com/",                                            dd:"https://downdetector.com/status/starlink/" },
+];
+const REFERENCE = [
+  { name:"EarthLink Fiber", tech:"FIBER",     url:"https://www.earthlink.net/" },
+  { name:"Viasat",          tech:"SATELLITE", url:"https://www.viasat.com/" },
+  { name:"HughesNet",       tech:"SATELLITE", url:"https://www.hughesnet.com/" },
+  { name:"Gtek",            tech:"WIRELESS",  url:"https://www.gtekservices.com/" },
+];
+const STATUS = {
+  operational:{ label:"OPERATIONAL",     color:"var(--up)",   glow:"var(--up-glow)",   lit:"var(--up)" },
+  possible:   { label:"POSSIBLE ISSUES", color:"var(--warn)", glow:"var(--warn-glow)", lit:"var(--warn)" },
+  outage:     { label:"OUTAGE",          color:"var(--down)", glow:"var(--down-glow)", lit:"var(--down)" },
+  unknown:    { label:"NO DATA",         color:"var(--unk)",  glow:"transparent",      lit:"var(--unk)" },
+};
+const SIG = { none:0, low:1, elevated:2, high:3 };
+const $ = (id) => document.getElementById(id);
+let lastSync = null, autoTimer = null;
+
+function statusOf(d){ return (d && STATUS[d.status]) ? d.status : "unknown"; }
+function relTime(ts){ if(!ts) return "—"; const s=Math.floor((Date.now()-ts)/1000);
+  if(s<60) return s+"s ago"; if(s<3600) return Math.floor(s/60)+"m ago"; return Math.floor(s/3600)+"h ago"; }
+
+function renderReference(){
+  $("reference").innerHTML = REFERENCE.map(r =>
+    `<a class="ref-chip" href="${r.url}" target="_blank" rel="noreferrer">${r.name} <span class="ref-tech">${r.tech}</span></a>`
+  ).join("");
+}
+
+function render(map){
+  const counts = { operational:0, possible:0, outage:0, unknown:0 };
+  $("cards").innerHTML = ROSTER.map(isp => {
+    const d = map[isp.id]; const st = statusOf(d); counts[st]++;
+    const meta = STATUS[st]; const level = d ? (SIG[d.signal] ?? 0) : 0;
+    const summary = d?.summary || "No current signal found for this provider.";
+    const areas = Array.isArray(d?.areas) ? d.areas.slice(0,4) : [];
+    const segs = [0,1,2].map(i => `<span class="seg" style="background:${i<level?meta.lit:'#1a232d'}"></span>`).join("");
+    const chips = areas.map(a => `<span class="area">${a}</span>`).join("");
+    return `<article class="card ${st}">
+      <div class="card-top"><div class="card-name">${isp.name}</div><span class="tech">${isp.tech}</span></div>
+      <div class="status-row"><span class="dot" style="background:${meta.color}; box-shadow:0 0 12px ${meta.glow}"></span>
+        <span class="status-label" style="color:${meta.color}">${meta.label}</span></div>
+      <div class="meter">${segs}</div>
+      <p class="summary">${summary}</p>
+      ${chips ? `<div class="areas">${chips}</div>` : ""}
+      <div class="links"><a href="${isp.status}" target="_blank" rel="noreferrer">Status &#8599;</a>
+        <span class="sep"></span><a href="${isp.dd}" target="_blank" rel="noreferrer">Downdetector &#8599;</a></div>
+    </article>`;
+  }).join("");
+
+  $("c-up").textContent = counts.operational; $("c-warn").textContent = counts.possible;
+  $("c-down").textContent = counts.outage;    $("c-unk").textContent  = counts.unknown;
+
+  const r = $("region"), rl = $("region-label");
+  r.className = "region " + (counts.outage>0 ? "down" : counts.possible>0 ? "warn"
+    : counts.unknown===ROSTER.length ? "unk" : "up");
+  rl.textContent = counts.outage>0 ? "REGIONAL DISRUPTION" : counts.possible>0 ? "ELEVATED REPORTS"
+    : counts.unknown===ROSTER.length ? "AWAITING DATA" : "ALL SYSTEMS NORMAL";
+}
+
+async function refresh(){
+  const btn = $("refresh"); btn.disabled = true; btn.textContent = "Scanning…";
+  $("sweep").classList.add("on"); $("banner").innerHTML = "";
+  try{
+    const res = await fetch("/api/status", { cache:"no-store" });
+    const payload = await res.json();
+    if(payload.error) throw new Error(payload.error);
+    const map = {}; (payload.results||[]).forEach(it => { if(it && it.id) map[it.id]=it; });
+    render(map);
+    lastSync = Date.now();
+    if(payload.mode === "demo"){
+      $("banner").innerHTML = `<div class="banner warn">Demo mode — set <b>ANTHROPIC_API_KEY</b> on the server to turn on live checks.</div>`;
+    } else if(payload.stale){
+      $("banner").innerHTML = `<div class="banner warn">Showing last good data — the most recent live check failed.</div>`;
+    }
+  }catch(e){
+    $("banner").innerHTML = `<div class="banner err">Live check failed (${e.message}). Use the Status / Downdetector links on each card to verify directly.</div>`;
+    render({});
+  }finally{
+    btn.disabled = false; btn.textContent = "Refresh"; $("sweep").classList.remove("on");
+    $("synced").textContent = "Last sync: " + relTime(lastSync);
+  }
+}
+
+$("refresh").addEventListener("click", refresh);
+$("auto").addEventListener("change", (e) => {
+  const m = Number(e.target.value);
+  if(autoTimer) clearInterval(autoTimer);
+  if(m>0) autoTimer = setInterval(refresh, m*60*1000);
+});
+setInterval(() => { $("synced").textContent = "Last sync: " + relTime(lastSync); }, 15000);
+
+renderReference();
+render({});
+refresh();
+</script>
+</body>
+</html>
